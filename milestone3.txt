@@ -1,0 +1,184 @@
+Implement Milestone 3: RAG Mode for my existing ChatGPT-style AI platform.
+
+First, analyze the attached embedding backend README carefully. Do not modify or replace the existing embedding backend. Use its exact API contracts.
+
+Existing architecture:
+- Next.js frontend
+- Firebase Google Authentication
+- Firebase Firestore
+- FastAPI backend
+- Qwen LLM
+- Existing General Mode is working
+- No PostgreSQL
+- No SQLAlchemy
+- No paid vector database
+
+Embedding backend details:
+- POST /api/embed-documents
+- Accepts multipart/form-data with fields named files
+- Accepts .txt files
+- Splits text into 500-word chunks with 50-word overlap
+- Returns document_id, filename, chunk_count, chunk_id, chunk_index, chunk text, and 384-dimensional embeddings
+- POST /api/embed-query
+- Accepts {"query": "..."}
+- Returns a 384-dimensional embedding
+- Embedding model: sentence-transformers/all-MiniLM-L6-v2
+
+Goal:
+Implement RAG Mode where users can upload notes and ask questions based only on those notes.
+
+Frontend requirements:
+1. Keep General Mode unchanged.
+2. Make RAG Mode functional.
+3. Allow the user to upload one or more .txt files.
+4. Send uploaded files to the existing embedding backend.
+5. Receive and validate the JSON response.
+6. Store the returned documents, chunks, and embeddings in browser IndexedDB.
+7. Keep the data separated per Firebase user.
+8. Show uploaded documents and their processing status.
+9. Allow users to delete individual documents.
+10. Provide a chat interface for asking questions about the stored notes.
+11. Show loading states and useful error messages.
+12. Keep the existing chat history functionality.
+
+IndexedDB requirements:
+Create a versioned IndexedDB database, for example:
+
+Database name:
+rag-vector-store
+
+Object stores:
+- documents
+- chunks
+- settings
+
+documents store:
+- documentId
+- userId
+- filename
+- characterCount
+- chunkCount
+- embeddingModel
+- embeddingDimension
+- createdAt
+
+Use documentId as the key.
+
+chunks store:
+- chunkId
+- userId
+- documentId
+- filename
+- chunkIndex
+- text
+- embedding
+- createdAt
+
+Use chunkId as the key.
+
+Create indexes for:
+- userId
+- documentId
+- userId + documentId
+
+Do not store all chunks inside one large document. Store each chunk as a separate IndexedDB record so that retrieval is easier and the database can scale.
+
+RAG query flow:
+1. User asks a question in RAG Mode.
+2. Send the question to POST /api/embed-query.
+3. Receive the query embedding.
+4. Load only the current Firebase user’s chunks from IndexedDB.
+5. Calculate cosine similarity between the query embedding and every stored chunk embedding.
+6. Sort chunks by similarity in descending order.
+7. Select the top K chunks, with K configurable and initially set to 5.
+8. Optionally apply a minimum similarity threshold.
+9. Build a context from the selected chunks.
+10. Send the context and question to the existing FastAPI backend.
+11. FastAPI must call the Qwen model.
+12. Qwen must answer only using the supplied context.
+13. Return the answer to the frontend.
+14. Display the answer and the source document/chunk references.
+
+Cosine similarity:
+Implement a reusable utility function:
+
+cosineSimilarity(vectorA, vectorB)
+
+Validate that both vectors:
+- Are arrays
+- Have the same length
+- Contain finite numbers
+- Have the expected dimension of 384
+
+Handle zero-magnitude vectors safely and return 0 similarity for them.
+
+Backend requirements:
+- Keep Firebase ID-token verification.
+- Keep the existing General Mode endpoint working.
+- Add a separate RAG endpoint, such as POST /api/rag/chat.
+- The frontend sends:
+  - question
+  - retrieved context
+  - source metadata
+- The backend must not perform vector search.
+- The backend must not store vectors.
+- The backend only validates the request, builds the prompt, calls Qwen, and returns the response.
+- Keep the Qwen API key only in backend environment variables.
+- Never expose the Qwen API key to the frontend.
+
+Qwen prompt:
+Use a strict grounded prompt similar to:
+
+System:
+You are a document question-answering assistant.
+Answer the user’s question only using the provided notes.
+Do not use outside knowledge.
+If the answer is not present in the notes, say:
+“I could not find that information in the uploaded notes.”
+Do not invent facts.
+Keep the answer clear and concise.
+When possible, mention the source document and chunk number.
+
+User:
+Notes:
+{retrieved_context}
+
+Question:
+{user_question}
+
+Return:
+{answer}
+
+Important behavior:
+- If no documents are uploaded, show a clear message.
+- If no chunks meet the similarity threshold, do not call Qwen.
+- If the retrieved context is insufficient, tell the user that the answer was not found.
+- Never send the entire IndexedDB database to the backend.
+- Send only the selected top-K chunks.
+- Prevent parallel duplicate requests.
+- Add request cancellation where practical.
+- Preserve Markdown and code-block rendering.
+- Add copy, regenerate, and delete actions where appropriate.
+- Make the implementation modular.
+
+Suggested frontend modules:
+- lib/indexedDB.ts
+- lib/vectorSearch.ts
+- lib/embeddingApi.ts
+- lib/ragApi.ts
+- components/rag/DocumentUploader.tsx
+- components/rag/DocumentList.tsx
+- components/rag/RagChat.tsx
+- components/rag/RagSources.tsx
+
+Deliverables:
+1. Explain the final architecture briefly.
+2. Provide the complete required frontend files.
+3. Provide the required FastAPI files or endpoint changes.
+4. Provide environment-variable changes.
+5. Provide IndexedDB initialization and migration logic.
+6. Provide the cosine similarity implementation.
+7. Provide the Firestore security considerations.
+8. Provide setup and run commands.
+9. Explain how to test document upload, vector storage, retrieval, and Qwen responses.
+10. Do not implement PostgreSQL, SQLAlchemy, ChromaDB, Pinecone, RAG document storage in Firestore, or any paid vector database.

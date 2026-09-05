@@ -71,10 +71,42 @@ def test_chat_general_authorized_success():
         print("Chat general authorized success test passed!")
 
 
+def test_rag_chat_authorized_success():
+    mock_user = UserProfileResponse(
+        uid="test-uid-12345",
+        email="test@example.com",
+        name="Test Student",
+        picture=None,
+        email_verified=True,
+    )
+
+    with patch("app.main.verify_firebase_token", return_value=mock_user), \
+         patch("app.main.generate_qwen_response", return_value="The answer is in notes."):
+        response = client.post(
+            "/api/rag/chat",
+            headers={"Authorization": "Bearer mock-valid-token-xyz"},
+            json={
+                "question": "What is covered?",
+                "context": "[notes.txt, chunk 1]\nThe notes cover vectors.",
+                "sources": [{
+                    "document_id": "doc-1",
+                    "filename": "notes.txt",
+                    "chunk_id": "chunk-1",
+                    "chunk_index": 0,
+                    "similarity": 0.82,
+                }],
+            },
+        )
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+        assert response.json()["response"] == "The answer is in notes."
+        print("RAG chat authorized success test passed!")
+
+
 if __name__ == "__main__":
     test_health()
     test_verify_auth_no_token()
     test_verify_auth_invalid_token()
     test_chat_general_unauthorized()
     test_chat_general_authorized_success()
+    test_rag_chat_authorized_success()
     print("All backend tests completed successfully!")

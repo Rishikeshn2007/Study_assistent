@@ -18,6 +18,7 @@ def _is_openrouter() -> bool:
 async def generate_qwen_response(
     prompt: str,
     history: Optional[List[Dict[str, str]]] = None,
+    system_prompt: Optional[str] = None,
 ) -> str:
     """
     Calls the Qwen LLM API via OpenAI-compatible endpoint.
@@ -39,7 +40,7 @@ async def generate_qwen_response(
 
     # Build messages array for chat completion
     messages: List[Dict[str, str]] = [
-        {"role": "system", "content": SYSTEM_PROMPT}
+        {"role": "system", "content": system_prompt or SYSTEM_PROMPT}
     ]
 
     # Append valid history turns if provided

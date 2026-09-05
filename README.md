@@ -145,7 +145,25 @@ NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789012
 NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789012:web:...
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+
+# Existing embedding backend exposing the Milestone 3 contracts
+NEXT_PUBLIC_EMBEDDING_API_BASE_URL=http://localhost:8001
 ```
+
+## Milestone 3: RAG Mode
+
+RAG Mode is an additive workspace at `/welcome`. General Mode keeps its existing API and UI path. RAG uploads `.txt` files to the existing embedding backend, stores each returned chunk and 384-dimensional embedding in the versioned `rag-vector-store` IndexedDB database, and scopes every record by Firebase user ID.
+
+Retrieval happens in the browser: the query is embedded, cosine similarity ranks only the current user's chunks, and up to five passages above the configured threshold are sent to `POST /api/rag/chat`. The FastAPI endpoint verifies the Firebase ID token, builds a strict notes-only prompt, calls the existing Qwen service, and returns the selected source metadata. No vectors are stored in Firestore or on the backend.
+
+The embedding backend should be running at the URL in `NEXT_PUBLIC_EMBEDDING_API_BASE_URL` and must expose:
+
+```text
+POST /api/embed-documents   multipart/form-data, repeated `files` fields
+POST /api/embed-query       { "query": "..." }
+```
+
+To test the flow, start the embedding backend, FastAPI backend, and Next.js frontend. Sign in, switch to RAG Mode, upload one or more `.txt` files, confirm the documents appear in the notes list, and ask a question answered by those notes. Delete a document and verify it no longer contributes to retrieval. Questions with no passage above the threshold display a local error and do not call Qwen.
 
 ---
 

@@ -25,6 +25,7 @@ interface ChatSidebarProps {
   onDeleteChat: (chatId: string) => Promise<void>;
   isOpen: boolean;
   onToggleOpen: () => void;
+  modeLabel?: string;
 }
 
 export function ChatSidebar({
@@ -36,6 +37,7 @@ export function ChatSidebar({
   onDeleteChat,
   isOpen,
   onToggleOpen,
+  modeLabel = "General Mode",
 }: ChatSidebarProps) {
   const { user, backendUser, logout } = useAuth();
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
@@ -98,7 +100,7 @@ export function ChatSidebar({
               <div>
                 <h2 className="text-sm font-bold text-white tracking-tight">Study Assistant</h2>
                 <span className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider">
-                  General Mode
+                  {modeLabel}
                 </span>
               </div>
             </div>

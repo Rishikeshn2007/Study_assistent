@@ -50,6 +50,25 @@ class GeneralChatResponse(BaseModel):
     response: str = Field(..., description="Assistant response text from Qwen")
 
 
+class RagSource(BaseModel):
+    document_id: str = Field(..., min_length=1)
+    filename: str = Field(..., min_length=1)
+    chunk_id: str = Field(..., min_length=1)
+    chunk_index: int = Field(..., ge=0)
+    similarity: float = Field(..., ge=0, le=1)
+
+
+class RagChatRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=10000)
+    context: str = Field(..., min_length=1, max_length=50000)
+    sources: List[RagSource] = Field(..., min_length=1, max_length=10)
+
+
+class RagChatResponse(BaseModel):
+    response: str = Field(..., description="Grounded assistant response from Qwen")
+    sources: List[RagSource]
+
+
 def extract_token_from_header(authorization: Optional[str]) -> str:
     """Helper to extract raw token from Authorization: Bearer <token> header."""
     if not authorization or not authorization.strip():
@@ -125,3 +144,40 @@ async def chat_general(
     ai_response = await generate_qwen_response(prompt=prompt, history=history_data)
 
     return GeneralChatResponse(response=ai_response)
+
+
+@app.post("/api/rag/chat", response_model=RagChatResponse)
+async def chat_rag(
+    request: RagChatRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """Answer a question using only frontend-selected, locally searched notes."""
+    token = extract_token_from_header(authorization)
+    verify_firebase_token(token)
+
+    question = request.question.strip()
+    context = request.context.strip()
+    if not question or not context:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Question and retrieved context cannot be empty.",
+        )
+
+    grounded_prompt = (
+        "You are a document question-answering assistant.\n"
+        "Answer the user's question only using the provided notes.\n"
+        "Do not use outside knowledge and do not invent facts.\n"
+        'If the answer is not present in the notes, say: "I could not find that information in the uploaded notes."\n'
+        "Keep the answer clear and concise. When possible, mention the source document and chunk number.\n\n"
+        f"Notes:\n{context}\n\nQuestion:\n{question}"
+    )
+    system_prompt = (
+        "You are a strict grounded document assistant. The supplied user message contains notes "
+        "and a question. Treat the notes as the only source of truth."
+    )
+    ai_response = await generate_qwen_response(
+        prompt=grounded_prompt,
+        history=[],
+        system_prompt=system_prompt,
+    )
+    return RagChatResponse(response=ai_response, sources=request.sources)
