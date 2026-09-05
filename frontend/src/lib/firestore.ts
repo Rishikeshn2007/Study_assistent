@@ -27,6 +27,16 @@ export interface ChatMessage {
 
 // Timeout helper to guarantee Firestore calls never hang indefinitely
 const FIRESTORE_TIMEOUT_MS = 3500;
+let cloudSyncAvailable = true;
+
+function disableCloudSync(error: unknown): void {
+  if (!cloudSyncAvailable) return;
+  cloudSyncAvailable = false;
+  console.warn(
+    "[Firestore] Cloud sync is unavailable; using local cache for this session.",
+    error
+  );
+}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs = FIRESTORE_TIMEOUT_MS): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -96,6 +106,7 @@ function saveLocalMessages(uid: string, chatId: string, msgs: ChatMessage[]): vo
  */
 export async function getUserChats(uid: string): Promise<Chat[]> {
   if (!uid) return [];
+  if (!cloudSyncAvailable) return getLocalChats(uid);
   try {
     const chatsRef = collection(db, "users", uid, "chats");
     const q = query(chatsRef, orderBy("updatedAt", "desc"));
@@ -116,7 +127,7 @@ export async function getUserChats(uid: string): Promise<Chat[]> {
     saveLocalChats(uid, chats);
     return chats;
   } catch (error) {
-    console.warn("[Firestore] Failed or timed out loading chats from cloud, using local cache:", error);
+    disableCloudSync(error);
     return getLocalChats(uid);
   }
 }
@@ -140,12 +151,13 @@ export async function createChat(uid: string, initialTitle: string = "New Chat")
   saveLocalChats(uid, [newChat, ...existing.filter((c) => c.id !== newChat.id)]);
 
   // 2. Attempt cloud Firestore sync in background with timeout
+  if (!cloudSyncAvailable) return newChat;
   try {
     const chatsRef = collection(db, "users", uid, "chats");
     const newChatDoc = doc(chatsRef, randomId);
     await withTimeout(setDoc(newChatDoc, newChat), 3000);
   } catch (err) {
-    console.warn("[Firestore] Cloud sync for createChat failed or timed out (cached locally):", err);
+    disableCloudSync(err);
   }
 
   return newChat;
@@ -156,6 +168,7 @@ export async function createChat(uid: string, initialTitle: string = "New Chat")
  */
 export async function getChatMessages(uid: string, chatId: string): Promise<ChatMessage[]> {
   if (!uid || !chatId) return [];
+  if (!cloudSyncAvailable) return getLocalMessages(uid, chatId);
   try {
     const messagesRef = collection(db, "users", uid, "chats", chatId, "messages");
     const q = query(messagesRef, orderBy("createdAt", "asc"));
@@ -175,7 +188,7 @@ export async function getChatMessages(uid: string, chatId: string): Promise<Chat
     saveLocalMessages(uid, chatId, messages);
     return messages;
   } catch (error) {
-    console.warn("[Firestore] Loading messages from cloud failed or timed out, using local cache:", error);
+    disableCloudSync(error);
     return getLocalMessages(uid, chatId);
   }
 }
@@ -211,6 +224,7 @@ export async function saveChatMessage(
   saveLocalChats(uid, updatedLocalChats);
 
   // 2. Attempt cloud sync with timeout
+  if (!cloudSyncAvailable) return message;
   try {
     const messagesRef = collection(db, "users", uid, "chats", chatId, "messages");
     const newMsgDoc = doc(messagesRef, randomId);
@@ -219,7 +233,7 @@ export async function saveChatMessage(
     const chatDocRef = doc(db, "users", uid, "chats", chatId);
     await withTimeout(updateDoc(chatDocRef, { updatedAt: now }), 2000).catch(() => {});
   } catch (err) {
-    console.warn("[Firestore] Cloud sync for saveChatMessage failed or timed out (cached locally):", err);
+    disableCloudSync(err);
   }
 
   return message;
@@ -239,11 +253,12 @@ export async function updateChatMessage(
   const updated = msgs.map((m) => (m.id === messageId ? { ...m, content: newContent } : m));
   saveLocalMessages(uid, chatId, updated);
 
+  if (!cloudSyncAvailable) return;
   try {
     const msgDocRef = doc(db, "users", uid, "chats", chatId, "messages", messageId);
     await withTimeout(updateDoc(msgDocRef, { content: newContent }), 3000);
   } catch (err) {
-    console.warn("[Firestore] Cloud sync for updateChatMessage failed or timed out:", err);
+    disableCloudSync(err);
   }
 }
 
@@ -260,11 +275,12 @@ export async function deleteChatMessage(
   const remaining = msgs.filter((m) => m.id !== messageId);
   saveLocalMessages(uid, chatId, remaining);
 
+  if (!cloudSyncAvailable) return;
   try {
     const msgDocRef = doc(db, "users", uid, "chats", chatId, "messages", messageId);
     await withTimeout(deleteDoc(msgDocRef), 3000);
   } catch (err) {
-    console.warn("[Firestore] Cloud sync for deleteChatMessage failed or timed out:", err);
+    disableCloudSync(err);
   }
 }
 
@@ -284,11 +300,12 @@ export async function renameChat(
   const updated = chats.map((c) => (c.id === chatId ? { ...c, title: cleanTitle, updatedAt: now } : c));
   saveLocalChats(uid, updated);
 
+  if (!cloudSyncAvailable) return;
   try {
     const chatDocRef = doc(db, "users", uid, "chats", chatId);
     await withTimeout(updateDoc(chatDocRef, { title: cleanTitle, updatedAt: now }), 3000);
   } catch (err) {
-    console.warn("[Firestore] Cloud sync for renameChat failed or timed out:", err);
+    disableCloudSync(err);
   }
 }
 
@@ -303,6 +320,7 @@ export async function deleteChat(uid: string, chatId: string): Promise<void> {
     localStorage.removeItem(`study_msgs_${uid}_${chatId}`);
   }
 
+  if (!cloudSyncAvailable) return;
   try {
     const messagesRef = collection(db, "users", uid, "chats", chatId, "messages");
     const snapshot = await withTimeout(getDocs(messagesRef), 3000);
@@ -317,6 +335,6 @@ export async function deleteChat(uid: string, chatId: string): Promise<void> {
 
     await withTimeout(batch.commit(), 3000);
   } catch (err) {
-    console.warn("[Firestore] Cloud sync for deleteChat failed or timed out:", err);
+    disableCloudSync(err);
   }
 }
