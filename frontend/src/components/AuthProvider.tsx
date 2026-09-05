@@ -27,6 +27,7 @@ interface AuthContextType {
   isAuthenticating: boolean;
   error: string | null;
   isConfigured: boolean;
+  getIdToken: () => Promise<string | null>;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
@@ -161,6 +162,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Helper to acquire a fresh Firebase ID token
+  const getIdToken = useCallback(async (): Promise<string | null> => {
+    if (user) {
+      try {
+        const token = await user.getIdToken();
+        setIdToken(token);
+        return token;
+      } catch (err) {
+        console.error("[Auth] Error refreshing ID token:", err);
+      }
+    }
+    return idToken;
+  }, [user, idToken]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -171,6 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticating,
         error,
         isConfigured: isFirebaseConfigured,
+        getIdToken,
         signInWithGoogle,
         logout,
         clearError,

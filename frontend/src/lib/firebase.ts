@@ -8,6 +8,7 @@ import {
   type Auth,
   type User,
 } from "firebase/auth";
+import { getFirestore, type Firestore } from "firebase/firestore";
 
 // Check if user has supplied actual credentials in .env.local
 export const isFirebaseConfigured = Boolean(
@@ -32,6 +33,9 @@ const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebas
 // Initialize Firebase Authentication
 const auth: Auth = getAuth(app);
 
+// Initialize Firebase Firestore Database (Client SDK)
+const db: Firestore = getFirestore(app);
+
 // Configure Google Auth Provider
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
@@ -41,6 +45,7 @@ googleProvider.setCustomParameters({
 export {
   app,
   auth,
+  db,
   googleProvider,
   signInWithPopup,
   signOut,

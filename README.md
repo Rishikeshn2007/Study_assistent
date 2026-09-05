@@ -1,6 +1,25 @@
-# Study Assistant — Milestone 1: Simple Google Authentication Flow
+# Study Assistant — AI Learning Platform
 
-A clean, modular, and production-ready Google Authentication flow connecting a **Next.js (React + TypeScript + Tailwind CSS)** frontend with a **FastAPI (Python)** backend using **Firebase Authentication** and the **Firebase Admin SDK**.
+A modern, high-performance AI Study Platform built with **Next.js (React 19 + TypeScript + Tailwind CSS)**, **FastAPI (Python)**, **Firebase Authentication**, **Firebase Firestore**, and **Qwen LLM (DashScope)**.
+
+---
+
+## 🚀 Milestones Implemented
+
+- **Milestone 1: Google Authentication Flow**
+  - Firebase Authentication with Google OAuth (`GoogleAuthProvider`, `signInWithPopup`, `onAuthStateChanged`).
+  - Next.js client-side route protection (`ProtectedRoute`, `AuthProvider`).
+  - FastAPI backend token verification via Firebase Admin SDK (`/api/auth/verify`).
+  - Environment variable isolation and configuration.
+
+- **Milestone 2: General Mode & Chat Workspace**
+  - ChatGPT-style responsive interface with Markdown and syntax-highlighted code blocks with copy action.
+  - Interactive sidebar with **New Chat**, chat history list, inline **Rename**, and **Delete** actions.
+  - Full message actions: **Copy**, **Edit prompt & resubmit**, **Regenerate response**, and **Delete message**.
+  - **Firebase Firestore** client persistence under each user's unique UID (`/users/{uid}/chats/{chatId}/messages/{messageId}`).
+  - Stateless **FastAPI** backend with **Qwen LLM API** (`POST /api/chat/general`) using OpenAI-compatible endpoints.
+  - Zero database on backend (no PostgreSQL, no SQLAlchemy, no paid databases).
+  - Mode Switcher on `/welcome` displaying **General Mode** (active) and **RAG Mode** (Milestone 3 placeholder).
 
 ---
 
@@ -10,163 +29,158 @@ A clean, modular, and production-ready Google Authentication flow connecting a *
 Study_assistent/
 ├── backend/
 │   ├── app/
-│   │   ├── __init__.py          # Package marker
-│   │   ├── main.py              # FastAPI app instance, CORS middleware, routes
-│   │   ├── config.py            # Environment config & Firebase Admin SDK initialization
-│   │   └── auth.py              # Token verification logic & Pydantic models
+│   │   ├── __init__.py          # App package marker
+│   │   ├── main.py              # FastAPI app, CORS, /api/auth/verify & /api/chat/general
+│   │   ├── config.py            # Environment variables & Firebase Admin initialization
+│   │   ├── auth.py              # Firebase Admin ID token verification
+│   │   └── qwen_service.py      # Async client for Qwen LLM API (DashScope)
 │   ├── tests/
-│   │   └── test_api.py          # Automated endpoint tests (health check, token validation)
-│   ├── requirements.txt         # FastAPI, Uvicorn, Firebase Admin, Pydantic, python-dotenv
+│   │   └── test_api.py          # Automated tests for health, auth, and Qwen chat
+│   ├── requirements.txt         # FastAPI, Uvicorn, httpx, Firebase Admin, Pydantic
 │   ├── .env.example             # Backend environment template
-│   └── .env                     # Local backend environment file
+│   └── .env                     # Local backend secrets (git ignored)
 │
 ├── frontend/
 │   ├── src/
 │   │   ├── app/
-│   │   │   ├── layout.tsx       # Root layout with AuthProvider and global typography
-│   │   │   ├── page.tsx         # Clean landing page ("Continue with Google")
+│   │   │   ├── layout.tsx       # Root layout with AuthProvider & metadata
+│   │   │   ├── page.tsx         # Landing page with "Continue with Google"
 │   │   │   ├── welcome/
-│   │   │   │   └── page.tsx     # Protected page (Google avatar, name, email, Log Out)
+│   │   │   │   └── page.tsx     # Mode Switcher (General Mode & RAG placeholder)
 │   │   │   └── globals.css      # Tailwind CSS styles
 │   │   ├── components/
-│   │   │   ├── AuthProvider.tsx # Auth context, onAuthStateChanged, token & session state
-│   │   │   ├── GoogleSignInButton.tsx # Reusable Google sign-in button with SVG icon
-│   │   │   └── ProtectedRoute.tsx     # Route guard protecting /welcome
+│   │   │   ├── AuthProvider.tsx       # Authentication context & session listener
+│   │   │   ├── GoogleSignInButton.tsx # Branded Google OAuth button
+│   │   │   ├── ProtectedRoute.tsx     # Guards authenticated pages
+│   │   │   ├── ChatSidebar.tsx        # ChatGPT-style sidebar with history & actions
+│   │   │   ├── GeneralChat.tsx        # Chat interface with auto-scroll, actions, input
+│   │   │   └── MarkdownRenderer.tsx   # Markdown parser with code blocks & copy button
 │   │   └── lib/
-│   │       ├── firebase.ts      # Firebase client SDK initialization & auth exports
-│   │       └── api.ts           # API client to verify tokens with FastAPI
+│   │       ├── firebase.ts      # Firebase app, auth, and firestore db initialization
+│   │       ├── firestore.ts     # CRUD operations for user-scoped chats & messages
+│   │       └── api.ts           # API client for FastAPI endpoints
 │   ├── .env.local.example       # Frontend environment template
-│   ├── .env.local               # Local frontend environment file
-│   ├── package.json             # Next.js, React, Tailwind CSS, Firebase dependencies
-│   ├── tsconfig.json            # TypeScript configuration
-│   └── next.config.ts           # Next.js configuration (remote Google image domains)
+│   ├── .env.local               # Local frontend secrets (git ignored)
+│   ├── package.json             # Next.js 16, React 19, Lucide, Tailwind, Firebase
+│   └── next.config.ts           # Next.js config with remote Google avatars
 │
-├── venv/                        # Python virtual environment
-└── README.md                    # Project documentation & run guide
+├── firestore.rules              # Firestore user-isolation security rules
+└── README.md                    # Project documentation
 ```
 
 ---
 
 ## ⚙️ Prerequisites
 
-- **Node.js** v18+ (Node v20+ recommended)
-- **Python** 3.10+ (tested with Python 3.12)
-- **Firebase Account** (free Spark plan)
+- **Node.js**: v18+ (tested on Node 20+)
+- **Python**: 3.10+ (tested on Python 3.12)
+- **Firebase Account**: Free Spark plan on [Firebase Console](https://console.firebase.google.com/)
+- **Qwen API Key**: Alibaba Cloud Model Studio / DashScope Console
 
 ---
 
-## 🔥 Firebase Setup Steps
+## 🔥 Firebase & Firestore Setup
 
-### Step 1: Create a Firebase Project
-1. Go to the [Firebase Console](https://console.firebase.google.com/).
-2. Click **Add project** and name it (e.g., `study-assistant`).
-3. Google Analytics can be enabled or disabled (your choice).
-4. Click **Create project**.
+### 1. Enable Firebase Authentication
+1. Go to [Firebase Console](https://console.firebase.google.com/) and open or create your project.
+2. Under **Build > Authentication**, click **Get Started**.
+3. Enable **Google** in the Sign-in providers tab.
+4. Under **Project Settings > General > Your apps**, add a Web App and copy the config parameters.
 
-### Step 2: Enable Google Sign-In Provider
-1. In your Firebase console, navigate to **Build** > **Authentication**.
-2. Click **Get Started**.
-3. Under the **Sign-in method** tab, click **Google**.
-4. Toggle **Enable**.
-5. Set the **Project support email** to your Google email.
-6. Click **Save**.
-
-### Step 3: Register a Web App (for Frontend)
-1. Go to **Project Overview** (gear icon) > **Project settings** > **General**.
-2. Scroll to the **Your apps** section and click the **Web icon (`</>`)**.
-3. App nickname: `study-assistant-web`.
-4. Click **Register app**.
-5. Copy the `firebaseConfig` keys and paste them into `frontend/.env.local`:
-   ```bash
-   NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSy...
-   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-   NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project
-   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
-   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789012
-   NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789012:web:abcdef...
-   NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-   ```
-
-### Step 4: Generate a Service Account Key (for Backend)
-1. In the Firebase Console, go to **Project settings** > **Service accounts**.
-2. Ensure **Firebase Admin SDK** is selected.
-3. Click **Generate new private key**, then confirm **Generate key**.
-4. A JSON file will download (e.g., `serviceAccountKey.json`).
-5. Place this file in `backend/` (or specify its absolute/relative path in `backend/.env`):
-   ```bash
-   FIREBASE_PROJECT_ID=your-project
-   FIREBASE_CREDENTIALS_PATH=./serviceAccountKey.json
-   ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-   ```
-
----
-
-## 🚀 Local Run Commands
-
-### 1. Run the FastAPI Backend
-
-Open a terminal in the root workspace directory:
-
-```powershell
-# Activate the virtual environment
-.\venv\Scripts\activate
-
-# (Optional if already installed) Install backend dependencies
-pip install -r backend\requirements.txt
-
-# Start the FastAPI server with reload
-uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-The backend server runs at `http://localhost:8000`.
-- **Health Check**: [http://localhost:8000/api/health](http://localhost:8000/api/health)
-- **Interactive Swagger Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
-
-### 2. Run the Next.js Frontend
-
-Open a second terminal:
-
-```powershell
-cd frontend
-
-# (Optional if already installed) Install frontend dependencies
-npm run dev
-# (On Windows PowerShell if execution policies block npm scripts, use: npm.cmd run dev)
-```
-
-The frontend application runs at [http://localhost:3000](http://localhost:3000).
-
----
-
-## 🧪 Testing the Authentication Flow
-
-1. **Verify Backend Health**:
-   Visit `http://localhost:8000/api/health` in your browser. It should return:
-   ```json
-   {
-     "status": "ok",
-     "service": "study_assistant_auth"
+### 2. Enable Firestore Database
+1. In Firebase Console, go to **Build > Firestore Database**.
+2. Click **Create database** (choose **production mode** or test mode).
+3. Under the **Rules** tab, paste the contents of `firestore.rules`:
+   ```javascript
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /users/{userId}/{document=**} {
+         allow read, write: if request.auth != null && request.auth.uid == userId;
+       }
+     }
    }
    ```
+4. Click **Publish**.
 
-2. **Access the Landing Page**:
-   - Open `http://localhost:3000`.
-   - You will see the application name **Study Assistant**, the welcome message, and the **"Continue with Google"** button.
+### 3. Generate Backend Service Account Key
+1. Go to **Project Settings > Service accounts**.
+2. Click **Generate new private key** and download the `.json` file.
+3. Place it in `backend/` or reference its path in `backend/.env`.
 
-3. **Test Route Protection**:
-   - Try navigating directly to `http://localhost:3000/welcome`.
-   - Notice that you are automatically redirected back to `/` because there is no authenticated session.
+---
 
-4. **Sign In**:
-   - Click **"Continue with Google"**.
-   - The Firebase Google popup opens. Choose your Google account.
-   - Upon successful sign-in, the client extracts the Firebase ID token and sends it to `POST /api/auth/verify`.
-   - You are redirected to `/welcome`.
+## 🔑 Environment Variables
 
-5. **Verify User Profile Display**:
-   - On `/welcome`, your Google profile photo, display name, and email address are shown.
-   - The status badge shows **"FastAPI Verified"**.
+### Backend (`backend/.env`)
+```bash
+# Firebase Project ID
+FIREBASE_PROJECT_ID=your-firebase-project-id
 
-6. **Log Out**:
-   - Click **"Log Out"**.
-   - Your session is cleared and you are safely returned to the landing page.
+# Optional: Path to downloaded Firebase service account JSON
+FIREBASE_CREDENTIALS_PATH=./study-assistant-firebase-adminsdk.json
+
+# Allowed CORS origins
+ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+
+# Qwen LLM API Key (DashScope)
+# Obtain from https://dashscope.console.aliyun.com/ or https://bailian.console.alibabacloud.com/
+QWEN_API_KEY=sk-your-qwen-api-key
+
+# DashScope OpenAI-compatible Endpoint
+# International: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+# China: https://dashscope.aliyuncs.com/compatible-mode/v1
+QWEN_API_BASE=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+
+# Qwen Model Identifier
+QWEN_MODEL=qwen-plus
+```
+
+### Frontend (`frontend/.env.local`)
+```bash
+NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSy...
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789012
+NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789012:web:...
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+```
+
+---
+
+## 🏃 How to Run Locally
+
+### 1. Start the FastAPI Backend
+```bash
+# From repository root
+.\venv\Scripts\activate
+cd backend
+uvicorn app.main:app --reload --port 8000
+```
+Backend will run at: `http://localhost:8000` (API Docs: `http://localhost:8000/docs`).
+
+### 2. Start the Next.js Frontend
+In a new terminal:
+```bash
+cd frontend
+npm.cmd run dev
+```
+Frontend will run at: `http://localhost:3000`.
+
+---
+
+## 🧪 Verification & Testing
+
+### Automated Backend Tests
+Run the automated test suite verifying health, authentication verification, and Qwen chat routing:
+```bash
+.\venv\Scripts\python.exe backend/tests/test_api.py
+```
+
+### Frontend Type Check & Build Validation
+```bash
+cd frontend
+npm.cmd run lint
+npm.cmd run build
+```

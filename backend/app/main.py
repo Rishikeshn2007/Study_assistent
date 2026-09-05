@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Header, Depends
+from typing import Optional, List, Dict
+from fastapi import FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional
+from pydantic import BaseModel, Field
 
 from .config import ALLOWED_ORIGINS, init_firebase
 from .auth import VerifyTokenRequest, UserProfileResponse, verify_firebase_token
+from .qwen_service import generate_qwen_response
 
 
 @asynccontextmanager
@@ -15,9 +17,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Study Assistant - Auth API",
-    description="Minimal FastAPI backend for Milestone 1 Firebase Google Authentication",
-    version="1.0.0",
+    title="Study Assistant API",
+    description="FastAPI backend for Milestone 1 Authentication and Milestone 2 General Mode Qwen LLM",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -31,12 +33,43 @@ app.add_middleware(
 )
 
 
+class HistoryMessage(BaseModel):
+    role: str = Field(..., description="'user' or 'assistant'")
+    content: str = Field(..., description="Message text content")
+
+
+class GeneralChatRequest(BaseModel):
+    prompt: str = Field(..., description="The user's query or prompt")
+    history: Optional[List[HistoryMessage]] = Field(
+        default_factory=list,
+        description="Optional recent conversation turns for context",
+    )
+
+
+class GeneralChatResponse(BaseModel):
+    response: str = Field(..., description="Assistant response text from Qwen")
+
+
+def extract_token_from_header(authorization: Optional[str]) -> str:
+    """Helper to extract raw token from Authorization: Bearer <token> header."""
+    if not authorization or not authorization.strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header is required.",
+        )
+    parts = authorization.split()
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        return parts[1].strip()
+    return authorization.strip()
+
+
 @app.get("/api/health")
 def health_check():
     """Health check endpoint to verify backend service status."""
     return {
         "status": "ok",
-        "service": "study_assistant_auth",
+        "service": "study_assistant_backend",
+        "milestone": 2,
     }
 
 
@@ -54,10 +87,41 @@ def verify_token(
     if request_data and request_data.token:
         token = request_data.token.strip()
     elif authorization:
-        parts = authorization.split()
-        if len(parts) == 2 and parts[0].lower() == "bearer":
-            token = parts[1].strip()
-        else:
-            token = authorization.strip()
+        token = extract_token_from_header(authorization)
 
     return verify_firebase_token(token or "")
+
+
+@app.post("/api/chat/general", response_model=GeneralChatResponse)
+async def chat_general(
+    request: GeneralChatRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    General Mode chat endpoint:
+    1. Authenticates request via Firebase ID token in Authorization header.
+    2. Calls the Qwen LLM API.
+    3. Returns the assistant response to the client.
+    Note: Chats and messages are persisted on the client via Firebase Firestore,
+    NOT in any backend database.
+    """
+    token = extract_token_from_header(authorization)
+    # Validate token with Firebase Admin
+    verify_firebase_token(token)
+
+    prompt = request.prompt.strip()
+    if not prompt:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Prompt cannot be empty.",
+        )
+
+    # Format history turns
+    history_data: List[Dict[str, str]] = [
+        {"role": h.role, "content": h.content} for h in (request.history or [])
+    ]
+
+    # Generate response from Qwen LLM
+    ai_response = await generate_qwen_response(prompt=prompt, history=history_data)
+
+    return GeneralChatResponse(response=ai_response)

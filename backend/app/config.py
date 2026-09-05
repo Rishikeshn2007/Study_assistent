@@ -12,6 +12,11 @@ FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "")
 FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH", "")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
 
+# Qwen LLM API Configuration
+QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
+QWEN_API_BASE = os.getenv("QWEN_API_BASE", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1").rstrip("/")
+QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen-plus")
+
 
 def init_firebase() -> bool:
     """
